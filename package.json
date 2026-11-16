@@ -1,0 +1,29 @@
+
+{
+  "name": "memory-match",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "keywords": [
+    "memory-game",
+    "memory-match",
+    "puzzle-game"
+  ],
+  "author": "",
+  "license": "MIT",
+  "description": "A premium memory match game built with TypeScript and Vite.",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
