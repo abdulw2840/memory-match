@@ -8,6 +8,7 @@ import { ProgressStore, type ProgressData } from "../systems/storage/ProgressSto
 export class App {
   private readonly sound = new SoundManager();
   private readonly speech = new SpeechManager();
+  private debugUnlocked = false;
   private readonly progressStore = new ProgressStore();
   private progress: ProgressData = this.progressStore.load();
   private readonly engine = new MemoryGameEngine(
@@ -24,6 +25,7 @@ export class App {
   public initialize(): void {
     this.renderHome();
     this.root.addEventListener("click", this.handleClick);
+    this.root.addEventListener("input", this.handleInput);
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
     window.addEventListener("resize", this.handleResize, { passive: true });
   }
@@ -33,6 +35,7 @@ export class App {
     this.speech.stop();
     this.engine.stop();
     this.root.removeEventListener("click", this.handleClick);
+    this.root.removeEventListener("input", this.handleInput);
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     window.removeEventListener("resize", this.handleResize);
   }
@@ -63,7 +66,7 @@ export class App {
         const levelId = Number(actionButton.dataset.level);
         if (Number.isInteger(levelId) && this.isLevelUnlocked(levelId)) {
           this.sound.play("click");
-          this.startGame(levelId);
+            this.startGame(levelId);
         }
         break;
       }
@@ -103,12 +106,47 @@ export class App {
         this.updateSettingsControls();
         if (this.sound.enabled) this.sound.play("click");
         break;
+      case "unlock-debug": {
+        const pin = this.root.querySelector<HTMLInputElement>("[data-debug-pin]")?.value ?? "";
+        const feedback = this.root.querySelector<HTMLElement>("[data-debug-feedback]");
+        if (pin === "1234") {
+          this.debugUnlocked = true;
+          if (feedback) feedback.textContent = "Developer mode unlocked.";
+          this.updateDebugControls();
+          this.renderHome();
+          this.openSettings();
+        } else if (feedback) {
+          feedback.textContent = "That PIN is not correct. Try again.";
+        }
+        break;
+      }
+      case "debug-unlock-all":
+        if (this.debugUnlocked) {
+          // Debug access bypasses progression without falsifying player completion records.
+          this.renderHome();
+          this.openSettings();
+        }
+        break;
+      case "select-avatar": {
+        const avatarId = actionButton.dataset.avatar ?? "sunny";
+        if (this.getAvailableAvatars().some((avatar) => avatar.id === avatarId)) {
+          this.progress = { ...this.progress, selectedAvatar: avatarId };
+          this.progressStore.save(this.progress);
+          this.renderHome();
+        }
+        break;
+      }
       case "toggle-motion":
         this.reducedMotion = !this.reducedMotion;
         this.root.classList.toggle("motion-reduced", this.reducedMotion);
         this.updateSettingsControls();
         break;
     }
+  };
+
+  private readonly handleInput = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
   };
 
   private readonly handleVisibilityChange = (): void => {
@@ -156,7 +194,40 @@ export class App {
   }
 
   private isLevelUnlocked(levelId: number): boolean {
-    return levelId >= 1 && levelId <= this.getUnlockedLevel();
+    return this.debugUnlocked || (levelId >= 1 && levelId <= this.getUnlockedLevel());
+  }
+
+  private getAvatarCatalog(): ReadonlyArray<{ id: string; name: string; emoji: string; unlockAt: number }> {
+    return [
+      { id: "sunny", name: "Sunny", emoji: "☀️", unlockAt: 0 },
+      { id: "bunny", name: "Bubbles", emoji: "🐰", unlockAt: 1 },
+      { id: "fox", name: "Foxy", emoji: "🦊", unlockAt: 3 },
+      { id: "panda", name: "Pip", emoji: "🐼", unlockAt: 5 },
+      { id: "cat", name: "Mittens", emoji: "🐱", unlockAt: 7 },
+      { id: "dragon", name: "Spark", emoji: "🐉", unlockAt: 9 },
+      { id: "unicorn", name: "Twinkle", emoji: "🦄", unlockAt: 12 },
+    ];
+  }
+
+  private getAvailableAvatars() {
+    // Developer mode bypasses avatar rewards as well as level progression,
+    // without changing the player's saved completion history.
+    if (this.debugUnlocked) return this.getAvatarCatalog();
+    const completed = this.progress.completedLevels.length;
+    return this.getAvatarCatalog().filter((avatar) => avatar.unlockAt === 0 || completed >= avatar.unlockAt);
+  }
+
+  private renderSelectedAvatar(): string {
+    const available = this.getAvailableAvatars();
+    const avatar = available.find((item) => item.id === this.progress.selectedAvatar) ?? available[0]!;
+    if (avatar.id === "sunny") return `<div class="hero-sun" aria-hidden="true"><svg viewBox="0 0 220 220"><circle cx="110" cy="110" r="82" fill="#FFD15B"/><path d="M110 8 126 35 155 20 158 51 190 45 181 77 211 95 188 116 210 143 178 153 183 185 151 177 133 207 110 186 87 207 69 177 37 185 42 153 10 143 32 116 9 95 39 77 30 45 62 51 65 20 94 35Z" fill="#FFBF45"/><ellipse cx="82" cy="106" rx="7" ry="11" fill="#634344"/><ellipse cx="139" cy="106" rx="7" ry="11" fill="#634344"/><circle cx="61" cy="128" r="11" fill="#FF8D98"/><circle cx="159" cy="128" r="11" fill="#FF8D98"/><path d="M94 132q16 18 32 0" fill="none" stroke="#634344" stroke-width="5" stroke-linecap="round"/></svg></div>`;
+    return `<div class="hero-avatar" role="img" aria-label="${avatar.name}"><span>${avatar.emoji}</span><small>${avatar.name}</small></div>`;
+  }
+
+  private renderAvatarRewards(): string {
+    const available = this.getAvailableAvatars();
+    const selected = available.find((avatar) => avatar.id === this.progress.selectedAvatar) ?? available[0]!;
+    return `<section class="avatar-rewards"><div class="avatar-rewards-heading"><div><span class="section-label">COLLECT YOUR FRIENDS</span><h2>My buddies</h2><p>Finish levels to win new characters!</p></div><span class="avatar-count">${available.length}/${this.getAvatarCatalog().length} unlocked</span></div><div class="avatar-collection">${this.getAvatarCatalog().map((avatar) => { const unlocked = available.some((item) => item.id === avatar.id); const active = selected.id === avatar.id; return `<button class="avatar-reward ${unlocked ? "is-unlocked" : "is-locked"} ${active ? "is-selected" : ""}" type="button" ${unlocked ? `data-action="select-avatar" data-avatar="${avatar.id}"` : "disabled"} aria-label="${unlocked ? `Use ${avatar.name}` : `Unlock ${avatar.name} after ${avatar.unlockAt} levels`}"><span>${unlocked ? avatar.emoji : "🔒"}</span><small>${unlocked ? avatar.name : `${avatar.unlockAt} levels`}</small></button>`; }).join("")}</div></section>`;
   }
 
   private renderHome(): void {
@@ -173,10 +244,9 @@ export class App {
             <div class="welcome-label"><span>✦</span> A WORLD OF FUN <span>✦</span></div>
             <h1>Let's play<br><span>and discover!</span></h1>
             <p>Find picture pairs, meet new things and make every match count.</p>
-            <button class="play-button hero-play" type="button" data-action="start">
-              <span class="play-icon" aria-hidden="true">▶</span>
-              <span>${completedCount === LEVELS.length ? "Play again!" : `Play level ${nextLevel}`}</span>
-              <span class="button-sparkle" aria-hidden="true">✦</span>
+            <button class="play-button hero-play" type="button" data-action="start" aria-label="Play level ${nextLevel}">
+              <span class="play-main"><span class="play-icon" aria-hidden="true">▶</span><strong>Play</strong></span>
+              <small class="play-level-hint">Level ${nextLevel}</small>
             </button>
             <div class="home-progress" aria-label="${completedCount} of ${LEVELS.length} levels completed">
               <div class="home-progress-label"><strong>Your adventure</strong><span>${completedCount} / ${LEVELS.length} levels</span></div>
@@ -184,32 +254,16 @@ export class App {
             </div>
           </div>
 
-          <div class="hero-art" aria-label="Sunny the smiling sun mascot">
+          <div class="hero-art" aria-label="Your selected game buddy">
             <div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div>
-            <div class="hero-sun" aria-hidden="true">
-              <svg viewBox="0 0 220 220">
-                <defs><linearGradient id="homeSun" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFF18A"/><stop offset="100%" stop-color="#FFB13D"/></linearGradient></defs>
-                <path d="M110 7 126 34 155 20 157 51 190 51 181 81 210 96 187 117 207 143 176 155 181 188 149 180 133 211 108 190 83 211 72 178 39 183 45 151 13 136 34 111 10 88 42 75 37 43 70 48 84 17 110 38Z" fill="#FFBF45"/>
-                <circle cx="110" cy="108" r="75" fill="url(#homeSun)"/>
-                <ellipse cx="82" cy="105" rx="7" ry="11" fill="#634344"/><ellipse cx="139" cy="105" rx="7" ry="11" fill="#634344"/>
-                <circle cx="61" cy="126" r="11" fill="#FF8D98" opacity=".7"/><circle cx="159" cy="126" r="11" fill="#FF8D98" opacity=".7"/>
-                <path d="M94 130q16 18 32 0" fill="none" stroke="#634344" stroke-width="5" stroke-linecap="round"/>
-                <path d="M77 74q10-10 21-2" fill="none" stroke="#FFF" stroke-width="5" stroke-linecap="round" opacity=".7"/>
-              </svg>
-            </div>
+            ${this.renderSelectedAvatar()}
             <span class="hero-float float-star">★</span><span class="hero-float float-cloud">☁</span><span class="hero-float float-rainbow">✦</span>
             <div class="speech-bubble">Hi, friend! <span>☀</span></div>
           </div>
           <div class="hero-ground" aria-hidden="true"></div>
         </section>
 
-        <section class="world-strip" aria-label="Things to discover">
-          <div class="world-chip world-animals"><span class="world-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="21" rx="8" ry="6"/><circle cx="7" cy="11" r="4"/><circle cx="15" cy="7" r="4"/><circle cx="24" cy="10" r="4"/></svg></span><strong>Animals</strong></div>
-          <div class="world-chip world-food"><span class="world-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 9c-8-6-15 1-11 11 3 7 8 10 11 10s8-3 11-10c4-10-3-17-11-11Z"/><path d="M16 9c0-5 3-7 7-7-1 5-3 7-7 7Z"/></svg></span><strong>Yummy food</strong></div>
-          <div class="world-chip world-space"><span class="world-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="8"/><ellipse cx="16" cy="16" rx="14" ry="5" transform="rotate(-25 16 16)"/></svg></span><strong>Space</strong></div>
-          <div class="world-chip world-things"><span class="world-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 7q7-3 12 2 5-5 12-2v20q-7-3-12 2-5-5-12-2Z"/><path d="M16 9v20"/></svg></span><strong>Everyday things</strong></div>
-          <div class="world-chip world-nature"><span class="world-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 25a12 12 0 0 1 24 0"/><path d="M8 25a8 8 0 0 1 16 0"/><path d="M12 25a4 4 0 0 1 8 0"/></svg></span><strong>Nature</strong></div>
-        </section>
+        ${this.renderAvatarRewards()}
 
         <section class="level-section">
           <div class="level-section-heading">
@@ -276,7 +330,10 @@ export class App {
                 </span>
               </button>`).join("")}
           </div>
-          <div class="game-actions"><button class="soft-button" type="button" data-action="home">← Home</button><button class="soft-button restart-button" type="button" data-action="restart">↻ Try this level again</button></div>
+          <div class="game-actions">
+            <button class="game-action-button home-action" type="button" data-action="home"><span aria-hidden="true">⌂</span><strong>Home</strong><small>Choose a level</small></button>
+            <button class="game-action-button restart-action" type="button" data-action="restart"><span aria-hidden="true">↻</span><strong>Play again</strong><small>Restart this level</small></button>
+          </div>
         </section>
         <footer class="footer"><span>Match a pair to hear its name!</span><span class="footer-stars">★ ★ ★</span></footer>
       </main>`;
@@ -302,7 +359,7 @@ export class App {
       button.classList.toggle("is-matched", card.matched);
       button.disabled = card.matched;
       button.setAttribute("aria-pressed", String(card.flipped || card.matched));
-      button.setAttribute("aria-label", card.matched ? `${card.initial} is for ${card.name}, matched` : card.flipped ? `${card.initial} is for ${card.name}` : "Hidden card, reveal it");
+      button.setAttribute("aria-label", card.matched ? `${card.name}, matched` : card.flipped ? `${card.name}` : "Hidden card, reveal it");
     }
 
     const moves = this.root.querySelector<HTMLElement>(".moves-value");
@@ -355,10 +412,10 @@ export class App {
       this.sound.play("match");
       if (card) {
         if (message) {
-          message.textContent = `${card.initial} is for ${card.name}!`;
+          message.textContent = `${card.name}!`;
           message.dataset.matchMessage = "true";
         }
-        if (this.sound.enabled) this.speech.speakMatch(card.name, card.initial);
+        if (this.sound.enabled) this.speech.speakMatch(card.name);
       }
     } else if (result === "mismatched") {
       this.sound.play("mismatch");
@@ -384,6 +441,7 @@ export class App {
       completedLevels: [...completedLevels].sort((a, b) => a - b),
       bestMoves,
       bestTimes,
+      selectedAvatar: this.progress.selectedAvatar,
     };
     this.progressStore.save(this.progress);
   }
@@ -422,6 +480,10 @@ export class App {
         <div class="dialog-sparkle">✦</div><h2 id="settings-title">Game settings</h2><p>Make your adventure feel just right.</p>
         <div class="setting-row"><span><strong>Sounds & spoken words</strong><small>Hear flips, matches and object names</small></span><button class="setting-toggle" type="button" data-action="toggle-sound" aria-pressed="${this.sound.enabled}">${this.sound.enabled ? "ON" : "OFF"}</button></div>
         <div class="setting-row"><span><strong>Calm animations</strong><small>Reduce movement and visual effects</small></span><button class="setting-toggle" type="button" data-action="toggle-motion" aria-pressed="${this.reducedMotion}">${this.reducedMotion ? "ON" : "OFF"}</button></div>
+        <div class="debug-section">
+          <div class="debug-heading"><strong>Developer debugging</strong><small>Unlock every level and avatar for testing</small></div>
+          ${this.debugUnlocked ? `<p class="debug-unlocked">All levels and all buddies are unlocked for testing.</p><button class="soft-button debug-unlock-all" type="button" data-action="debug-unlock-all">View unlocked content</button>` : `<div class="debug-pin-row"><input data-debug-pin type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" aria-label="Developer PIN"><button class="soft-button" type="button" data-action="unlock-debug">Unlock</button></div><small class="debug-feedback" data-debug-feedback aria-live="polite"></small>`}
+        </div>
         <button class="play-button dialog-done" type="button" data-action="close-settings">All done!</button>
       </section>`;
     this.root.append(overlay);
@@ -445,6 +507,14 @@ export class App {
       motionToggle.setAttribute("aria-pressed", String(this.reducedMotion));
     }
     this.updateSoundControls();
+  }
+
+  private updateDebugControls(): void {
+    const section = this.root.querySelector<HTMLElement>(".debug-section");
+    if (!section) return;
+    section.innerHTML = this.debugUnlocked
+      ? `<div class="debug-heading"><strong>Developer debugging</strong><small>Unlock every level and avatar for testing</small></div><p class="debug-unlocked">All levels and all buddies are unlocked for testing.</p><button class="soft-button debug-unlock-all" type="button" data-action="debug-unlock-all">View unlocked content</button>`
+      : section.innerHTML;
   }
 
   private updateSoundControls(): void {
@@ -486,8 +556,9 @@ export class App {
     overlay.innerHTML = `
       <div class="confetti-field" aria-hidden="true">${confetti}</div>
       <section class="settings-dialog victory-dialog" role="dialog" aria-modal="true" aria-labelledby="victory-title">
-        <div class="trophy">★</div><span class="section-label">LEVEL ${String(this.currentLevelId).padStart(2, "0")} COMPLETE</span><h2 id="victory-title">You did it!</h2><p>Sunny is so proud of you. You found every pair!</p>
+        <div class="trophy">★</div><span class="section-label">LEVEL ${String(this.currentLevelId).padStart(2, "0")} COMPLETE</span><h2 id="victory-title">You did it!</h2><p>Your buddy is cheering! You found every pair!</p>
         <div class="victory-stats"><span><strong>${snapshot.moves}</strong><small>Moves</small></span><span><strong>${this.formatTime(snapshot.elapsedMs)}</strong><small>Time</small></span><span><strong>${snapshot.matches}/${snapshot.totalPairs}</strong><small>Pairs</small></span></div>
+        ${(() => { const reward = this.getAvatarCatalog().find((avatar) => avatar.unlockAt > 0 && avatar.unlockAt === this.progress.completedLevels.length); return reward ? `<div class="avatar-unlock-reward"><span>${reward.emoji}</span><div><strong>New buddy unlocked!</strong><small>${reward.name} is ready to play with you</small></div></div>` : ""; })()}
         <button class="play-button dialog-done" type="button" data-action="${hasNextLevel ? "next-level" : "restart"}">${hasNextLevel ? "Next level! →" : "Play again!"}</button>
         <button class="soft-button" type="button" data-action="home">Choose another level</button>
       </section>`;

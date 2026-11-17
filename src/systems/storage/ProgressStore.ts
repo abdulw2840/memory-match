@@ -4,12 +4,14 @@ export interface ProgressData {
   readonly completedLevels: readonly number[];
   readonly bestMoves: Readonly<Record<string, number>>;
   readonly bestTimes: Readonly<Record<string, number>>;
+  readonly selectedAvatar: string;
 }
 
 const EMPTY_PROGRESS: ProgressData = {
   completedLevels: [],
   bestMoves: {},
   bestTimes: {},
+  selectedAvatar: "sunny",
 };
 
 export class ProgressStore {
@@ -26,6 +28,7 @@ export class ProgressStore {
           : [],
         bestMoves: value.bestMoves && typeof value.bestMoves === "object" ? value.bestMoves : {},
         bestTimes: value.bestTimes && typeof value.bestTimes === "object" ? value.bestTimes : {},
+        selectedAvatar: typeof value.selectedAvatar === "string" ? value.selectedAvatar : "sunny",
       };
     } catch {
       return EMPTY_PROGRESS;

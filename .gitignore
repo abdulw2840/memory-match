@@ -1,21 +1,9 @@
-
-# Dependencies
 node_modules/
-
-# Python environment
 .venv/
-
-# Build output (GitHub Actions will generate this)
 dist/
-
-# TypeScript generated files
 *.tsbuildinfo
-
-# Environment secrets
 .env
 .env.*
 !.env.example
-
-# Operating system
 .DS_Store
 Thumbs.db

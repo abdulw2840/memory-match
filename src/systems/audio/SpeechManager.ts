@@ -4,15 +4,15 @@ export class SpeechManager {
     return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   }
 
-  public speakMatch(name: string, initial: string): void {
+  public speakMatch(name: string): void {
     if (!this.supported) return;
 
     try {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(`${initial} is for ${name}!`);
+      const utterance = new SpeechSynthesisUtterance(name);
       utterance.lang = "en-US";
       utterance.rate = 0.88;
-      utterance.pitch = 1.12;
+      utterance.pitch = 1.08;
       utterance.volume = 1;
 
       const englishVoice = window.speechSynthesis.getVoices().find((voice) =>
